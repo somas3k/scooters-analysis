@@ -1,58 +1,10 @@
-from neo4j import GraphDatabase
 import math
+import datetime
+from time import mktime
+import operator
+from functools import reduce
 
-
-class NodesFetcher(object):
-
-    def __init__(self, uri, user, password):
-        self._driver = GraphDatabase.driver(uri, auth=(user, password))
-
-    def close(self):
-        self._driver.close()
-
-    def get_data_to_check_distance_between_scooters_and_pois(self):
-        with self._driver.session() as session:
-            return session.write_transaction(self._get_data_to_check_distance_between_scooters_and_pois).values()
-
-    def get_scooters(self):
-        with self._driver.session() as session:
-            return session.write_transaction(self._get_scooters).value()
-
-    def get_tracks(self):
-        scooters = self.get_scooters()
-        scooter_to_tracks = {}
-
-        for scooter in scooters:
-            with self._driver.session() as session:
-                stays_at_location = \
-                    session.write_transaction(self._get_ordered_stays_at_locations, scooter["carId"]).data()
-                prev = None
-                tracks = []
-                for st in stays_at_location:
-                    if prev:
-                        tracks.append({"from": prev, "to": st})
-                    prev = st
-                scooter_to_tracks[scooter["carId"]] = tracks
-
-        return scooter_to_tracks
-
-    @staticmethod
-    def _get_ordered_stays_at_locations(tx, scooter_id):
-        return tx.run("match (n:Scooter)-[t:STAYS_AT]->(l:Location) "
-                      "where n.carId=$scooter_id "
-                      "return properties(t) as stays_at, properties(l) as location order by t.from",
-                      scooter_id=scooter_id)
-
-    @staticmethod
-    def _get_data_to_check_distance_between_scooters_and_pois(tx):
-        return tx.run("MATCH ()-[t:STAYS_AT]->(l:Location) "
-                      "RETURN t.exactLat, t.exactLon, l.lat, l.lng "
-                      "ORDER BY t.from")
-
-    @staticmethod
-    def _get_scooters(tx):
-        return tx.run("MATCH (n:Scooter) "
-                      "RETURN properties(n)")
+from node_fetcher import NodesFetcher
 
 
 def distance(coord1, coord2):
@@ -87,9 +39,95 @@ def calculate_min_max_average_difference_between_scooters_and_pois(data):
     return min_distance, max_distance, avg
 
 
+TRACK_DURATION_LIMIT = 24 * 60  # minutes
+DATE_TIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
+
+
+def calculate_duration(track: dict):
+    start_time = datetime.datetime.strptime(track['from']['stays_at']['to'], DATE_TIME_FORMAT)
+    end_time = datetime.datetime.strptime(track['to']['stays_at']['from'], DATE_TIME_FORMAT)
+
+    return (mktime(end_time.timetuple()) - mktime(start_time.timetuple())) / 60
+
+
+def filter_too_long_tracks(tracks: list):
+    filtered_tracks = []
+    filtered_out_tracks = []
+    for track in tracks:
+        if calculate_duration(track) <= TRACK_DURATION_LIMIT:
+            filtered_tracks.append(track)
+        else:
+            filtered_out_tracks.append(track)
+    return filtered_tracks, filtered_out_tracks
+
+
+def filter_too_long_tracks_for_scooters(scooter_to_tracks: dict):
+    filtered_scooter_to_tracks = {}
+    filtered_out_scooter_to_tracks = {}
+    for scooter, tracks in scooter_to_tracks.items():
+        filtered_scooter_to_tracks[scooter], filtered_out_scooter_to_tracks[scooter] = filter_too_long_tracks(tracks)
+    return filtered_scooter_to_tracks, filtered_out_scooter_to_tracks
+
+
+def fuelLevel_diff(track):
+    fuelLevel_before = int(track['from']['stays_at']['fuelLevel'])
+    fuelLevel_after = int(track['to']['stays_at']['fuelLevel'])
+
+    return fuelLevel_before - fuelLevel_after
+
+
+def divide_by_used_and_charging(tracks):
+    were_used = []
+    were_charging = []
+    for track in tracks:
+        if fuelLevel_diff(track) < 0:
+            were_charging.append(track)
+        else:
+            were_used.append(track)
+    return were_used, were_charging
+
+
+def divide_tracks_for_scooters_by_used_and_charging(scooter_to_tracks: dict):
+    were_used = {}
+    were_charging = {}
+    for scooter, tracks in scooter_to_tracks.items():
+        were_used[scooter], were_charging[scooter] = divide_by_used_and_charging(tracks)
+
+    return were_used, were_charging
+
+
+def get_coords(point: dict):
+    return point['stays_at']['exactLat'], point['stays_at']['exactLon']
+
+
+def get_distance(from_dict, to_dict):
+    lat1, lon1 = get_coords(from_dict)
+    lat2, lon2 = get_coords(to_dict)
+
+    return 0
+
+
+def calculate_min_max_avg_track_distance(tracks: list):
+    min_distance = 99999999
+    max_distance = 0
+    distance_sum = 0
+
+    for track in tracks:
+        distance = get_distance(track['from'], track['to'])
+        if distance < min_distance:
+            min_distance = distance
+        if distance > max_distance:
+            max_distance = distance
+    return min_distance, max_distance, distance_sum / len(tracks)
+
+
 a = NodesFetcher("bolt://192.168.56.102", "neo4j", "hive")
 
-print(calculate_min_max_average_difference_between_scooters_and_pois(
-    a.get_data_to_check_distance_between_scooters_and_pois()))
-print(a.get_tracks()[12514])
+# print(calculate_min_max_average_difference_between_scooters_and_pois(
+#     a.get_data_to_check_distance_between_scooters_and_pois()))
+# print(a.get_tracks()[12514])
+filtered, filtered_out = filter_too_long_tracks_for_scooters(a.get_tracks())
+used, charging = divide_tracks_for_scooters_by_used_and_charging(filtered)
+min_dist, max_dist, avg = calculate_min_max_avg_track_distance(list(reduce(operator.concat, list(filtered.values()))))
+print(charging)
 a.close()
