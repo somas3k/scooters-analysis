@@ -6,6 +6,7 @@ const home = {
 //
 var map;
 var carPath = [];
+var allPaths = [];
 
 const mydata = routes;
 
@@ -22,6 +23,7 @@ const colorArray = ['#FF6633', '#FFB399', '#FF33FF', '#00B3E6',
 
 
 document.getElementById('routeList').appendChild(makeUL(Object.keys(mydata)));
+document.getElementById("drawAllButton").addEventListener("click", drawAllFrequentRoutes);
 
 function initMap() {
   map = new google.maps.Map(document.getElementById('map'), {
@@ -39,6 +41,60 @@ function addMarker(location, map) {
   return marker;
 }
 
+function drawAllFrequentRoutes() {
+  clearPolyline();
+  const n = document.getElementById("myNumber").value;
+
+  drawAllRoutes(n);
+} 
+
+function drawAllRoutes(minCounts) {
+  const adjacency = {};
+
+  Object.keys(mydata).forEach((carId) => {
+    mydata[carId].forEach((edge) => {
+      const key = edge.from.location.placeId + edge.to.location.placeId;
+      const revKey = edge.to.location.placeId + edge.from.location.placeId;
+
+      if (adjacency[key]) {
+        adjacency[key].counts = adjacency[key].counts + 1;
+      } else if (adjacency[revKey]) {
+        adjacency[revKey].counts = adjacency[revKey].counts + 1;
+      } else {
+        adjacency[key] = {
+          counts: 1,
+          from: {
+            lat: edge.from.location.lat,
+            lng: edge.from.location.lng,
+          },
+          to: {
+            lat: edge.to.location.lat,
+            lng: edge.to.location.lng,
+          },
+        };
+      }
+    });
+  });
+
+  Object.keys(adjacency).forEach((key) => {
+    if (adjacency[key].from.lat !== adjacency[key].to.lat
+      && adjacency[key].from.lng !== adjacency[key].to.lng
+      && adjacency[key].counts > minCounts) {
+      const line = new google.maps.Polyline({
+        path: [
+          adjacency[key].from,
+          adjacency[key].to,
+        ],
+        geodesic: true,
+        strokeColor: '#FF0000',
+        strokeOpacity: 1.0,
+        strokeWeight: adjacency[key].counts / 4,
+      });
+      line.setMap(map);
+      allPaths.push(line);
+    }
+  });
+}
 
 function clearPolyline() {
   const myNode = document.getElementById("details");
@@ -46,6 +102,7 @@ function clearPolyline() {
     myNode.removeChild(myNode.firstChild);
   }
   carPath.forEach(path => path.setMap(null));
+  allPaths.forEach(path => path.setMap(null));
   carPath = [];
 }
 
