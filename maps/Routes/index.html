@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>POI Creator</title>
+    <meta name="viewport" content="initial-scale=1.0">
+    <meta charset="utf-8">
+    <style>
+      #map {
+        height: 80%;
+        width: 100%;
+      }
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      ul#cars li {
+        display:inline-block;
+        margin: 2px 2px;
+      }
+      .routeList {
+        padding: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <!-- <button id="changeLocationButton" type="button">Draw locations for another timestamp</button>
+    <button id="drawLocationButton" type="button">Show locations</button>
+    <button id="clearLocationButton" type="button">Hide locations</button>
+    <button id="savePoiButton" type="button">Save poi</button> -->
+    <h1>Route Details:</h1>
+    <div id="details"></div>
+    <h1>Cars:</h1>
+    <div id="routeList"></div>
+    <script type="text/javascript" src="routes.js"></script>
+    <script src="map.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=XYZ&libraries=places&callback=initMap" async defer></script>
+  </body>
+</html>
+
