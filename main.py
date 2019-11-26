@@ -1,6 +1,8 @@
+import json
 import math
 import datetime
 from time import mktime, sleep
+import random
 import operator
 from functools import reduce
 import requests
@@ -39,7 +41,7 @@ def calculate_min_max_average_difference_between_scooters_and_pois(data):
     return min_distance, max_distance, avg
 
 
-TRACK_DURATION_LIMIT = 24 * 60  # minutes
+TRACK_DURATION_LIMIT = 12 * 60  # minutes
 DATE_TIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 
@@ -113,8 +115,12 @@ def get_walking_distance(from_dict, to_dict):
     PARAMS['wayPoint.1'] = get_coord_as_string(from_dict)
     PARAMS['wayPoint.2'] = get_coord_as_string(to_dict)
 
+    print('Calculating for {c1}, {c2}'.format(c1=get_coord_as_string(from_dict), c2=get_coord_as_string(to_dict)))
+
+    response = requests.get(url=REQUEST_URL, params=PARAMS).json()
+    print('Response: \n {r}'.format(r=response))
     i = int(
-        requests.get(url=REQUEST_URL, params=PARAMS).json()["resourceSets"][0]["resources"][0]["travelDistance"] * 1000)
+        response["resourceSets"][0]["resources"][0]["travelDistance"] * 1000)
 
     return i
 
@@ -131,12 +137,12 @@ def calculate_min_max_avg_track_distance(tracks: list):
         if dist > max_distance:
             max_distance = dist
         distance_sum += dist
-        sleep(0.5)
-        print('Completion: {:0.2f}'.format((i/len(tracks))*100))
+        # sleep(0.5)
+        print('Completion: {:0.2f}'.format((i / len(tracks)) * 100))
     return min_distance, max_distance, distance_sum / len(tracks)
 
 
-a = NodesFetcher("bolt://192.168.56.102", "neo4j", "hive")
+a = NodesFetcher("bolt://172.20.75.118", "neo4j", "hive")
 
 # print(calculate_min_max_average_difference_between_scooters_and_pois(
 #     a.get_data_to_check_distance_between_scooters_and_pois()))
@@ -144,6 +150,12 @@ a = NodesFetcher("bolt://192.168.56.102", "neo4j", "hive")
 filtered, filtered_out = filter_too_long_tracks_for_scooters(a.get_tracks())
 a.close()
 used, charging = divide_tracks_for_scooters_by_used_and_charging(filtered)
-min_dist, max_dist, avg = calculate_min_max_avg_track_distance(list(reduce(operator.concat, list(used.values()))))
+min_dist, max_dist, avg = calculate_min_max_avg_track_distance(
+    random.choices(list(reduce(operator.concat, list(used.values()))), k=300))
 print(min_dist, max_dist, avg)
 
+#
+# j = json.dumps(used, indent=4)
+# f = open('used.json', 'w')
+# print(j, file=f)
+# f.close()
