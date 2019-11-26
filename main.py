@@ -1,9 +1,9 @@
 import math
 import datetime
-from time import mktime
+from time import mktime, sleep
 import operator
 from functools import reduce
-
+import requests
 from node_fetcher import NodesFetcher
 
 
@@ -96,15 +96,27 @@ def divide_tracks_for_scooters_by_used_and_charging(scooter_to_tracks: dict):
     return were_used, were_charging
 
 
-def get_coords(point: dict):
-    return point['stays_at']['exactLat'], point['stays_at']['exactLon']
+def get_coord_as_string(point: dict):
+    return '{lat},{lon}'.format(lat=point['stays_at']['exactLat'], lon=point['stays_at']['exactLon'])
 
 
-def get_distance(from_dict, to_dict):
-    lat1, lon1 = get_coords(from_dict)
-    lat2, lon2 = get_coords(to_dict)
+REQUEST_URL = 'http://dev.virtualearth.net/REST/v1/Routes/Walking'
+PARAMS = {
+    'optimize': 'distance',
+    'maxSolutions': '1',
+    'key': 'Arq_YCOmhrZbndvDY0hrjqK_e6dvTuluWhNY8Jdd1AiV1WTCJm2rDPNI9Ckgv5EX',
+    'routeAttributes': 'routeSummariesOnly'
+}
 
-    return 0
+
+def get_walking_distance(from_dict, to_dict):
+    PARAMS['wayPoint.1'] = get_coord_as_string(from_dict)
+    PARAMS['wayPoint.2'] = get_coord_as_string(to_dict)
+
+    i = int(
+        requests.get(url=REQUEST_URL, params=PARAMS).json()["resourceSets"][0]["resources"][0]["travelDistance"] * 1000)
+
+    return i
 
 
 def calculate_min_max_avg_track_distance(tracks: list):
@@ -112,12 +124,15 @@ def calculate_min_max_avg_track_distance(tracks: list):
     max_distance = 0
     distance_sum = 0
 
-    for track in tracks:
-        distance = get_distance(track['from'], track['to'])
-        if distance < min_distance:
-            min_distance = distance
-        if distance > max_distance:
-            max_distance = distance
+    for i, track in enumerate(tracks):
+        dist = get_walking_distance(track['from'], track['to'])
+        if dist < min_distance:
+            min_distance = dist
+        if dist > max_distance:
+            max_distance = dist
+        distance_sum += dist
+        sleep(0.5)
+        print('Completion: {:0.2f}'.format((i/len(tracks))*100))
     return min_distance, max_distance, distance_sum / len(tracks)
 
 
@@ -127,7 +142,8 @@ a = NodesFetcher("bolt://192.168.56.102", "neo4j", "hive")
 #     a.get_data_to_check_distance_between_scooters_and_pois()))
 # print(a.get_tracks()[12514])
 filtered, filtered_out = filter_too_long_tracks_for_scooters(a.get_tracks())
-used, charging = divide_tracks_for_scooters_by_used_and_charging(filtered)
-min_dist, max_dist, avg = calculate_min_max_avg_track_distance(list(reduce(operator.concat, list(filtered.values()))))
-print(charging)
 a.close()
+used, charging = divide_tracks_for_scooters_by_used_and_charging(filtered)
+min_dist, max_dist, avg = calculate_min_max_avg_track_distance(list(reduce(operator.concat, list(used.values()))))
+print(min_dist, max_dist, avg)
+
