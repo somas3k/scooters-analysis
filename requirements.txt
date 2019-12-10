@@ -1,4 +1,6 @@
+scipy
 numpy
 matplotlib
 neo4j
 requests
+sklearn
