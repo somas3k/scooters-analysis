@@ -26,6 +26,7 @@ def calculate_min_max_average_difference_between_scooters_and_pois(data):
     min_distance = 999999
     max_distance = 0
     distance_sum = 0
+
     for value in data:
         [scooter_lat, scooter_lon, poi_lat, poi_lon] = value
         dis = distance((scooter_lat, scooter_lon), (poi_lat, poi_lon))
